@@ -6,70 +6,96 @@ public class PlayerInteract : MonoBehaviour
     public float interactDistance = 3f;
     public LayerMask interactableLayer;
     public KeyCode interactKey = KeyCode.E;
-    public KeyCode jumpKey = KeyCode.Space;
+    public KeyCode standKey = KeyCode.Space; 
 
     [Header("References")]
-    public GameObject interactUI; 
+    public GameObject sitUI;
+    public GameObject micUI; 
     public Transform playerBody;  
     public PlayerMovement playerMovementScript;
     public Rigidbody playerRb;
-    
-
     public GameObject qtePanel; 
 
     private bool isSitting = false;
-    private bool inMinigame = false; 
+    private bool inMinigame = false;
     private Chair currentChair = null;
 
     void Update()
     {
-        if (isSitting)
-            HandleSitting();
-        else if (inMinigame)
-            return; 
-        else
-            HandleLooking();
-    }
+       
+        if (inMinigame) return; 
 
-    void HandleLooking()
-    {
+        bool lookingAtMic = false;
+        bool lookingAtChair = false;
+        Chair seenChair = null;
+
+       
         Ray ray = new Ray(transform.position, transform.forward);
         RaycastHit hit;
 
         if (Physics.Raycast(ray, out hit, interactDistance, interactableLayer))
         {
-            Chair chair = hit.collider.GetComponent<Chair>();
+            seenChair = hit.collider.GetComponent<Chair>();
             
-           
-            if (chair != null)
+            if (seenChair != null && !isSitting) 
             {
-                interactUI.SetActive(true);
-                if (Input.GetKeyDown(interactKey)) SitDown(chair);
-                return;
+                
+                lookingAtChair = true;
             }
-            else if (hit.collider.CompareTag("Mic")) 
+            else if (hit.collider.CompareTag("Mic"))
             {
-                interactUI.SetActive(true);
-                if (Input.GetKeyDown(interactKey)) StartMinigame();
-                return;
+                lookingAtMic = true;
             }
         }
-        
-        interactUI.SetActive(false);
+
+       
+        sitUI.SetActive(lookingAtChair);
+        micUI.SetActive(lookingAtMic);
+
+       
+        if (isSitting)
+        {
+            // Keep the player locked to the chair
+            playerBody.position = currentChair.sitPoint.position;
+
+            // If sitting and looking at mic, E starts the minigame
+            if (lookingAtMic && Input.GetKeyDown(interactKey))
+            {
+                StartMinigame();
+            }
+            // If they press Space, OR if they press E while NOT looking at the mic, they stand up
+            else if (Input.GetKeyDown(standKey) || (Input.GetKeyDown(interactKey) && !lookingAtMic))
+            {
+                StandUp();
+            }
+        }
+        else // If standing up
+        {
+            if (lookingAtChair && Input.GetKeyDown(interactKey))
+            {
+                SitDown(seenChair);
+            }
+            else if (lookingAtMic && Input.GetKeyDown(interactKey))
+            {
+                StartMinigame();
+            }
+        }
     }
 
-   
     void StartMinigame()
     {
         inMinigame = true;
-        interactUI.SetActive(false);
         
-      
+        
+        sitUI.SetActive(false);
+        micUI.SetActive(false);
+        
+       
         playerMovementScript.enabled = false;
         playerRb.isKinematic = true; 
         playerRb.linearVelocity = Vector3.zero;
 
-       
+        
         qtePanel.SetActive(true);
     }
 
@@ -77,19 +103,12 @@ public class PlayerInteract : MonoBehaviour
     {
         inMinigame = false;
         
-        
-        playerMovementScript.enabled = true;
-        playerRb.isKinematic = false;
-    }
-   
-
-    void HandleSitting()
-    {
-        playerBody.position = currentChair.sitPoint.position;
-        interactUI.SetActive(false);
-
-        if (Input.GetKeyDown(interactKey) || Input.GetKeyDown(jumpKey))
-            StandUp();
+       
+        if (!isSitting) 
+        {
+            playerMovementScript.enabled = true;
+            playerRb.isKinematic = false;
+        }
     }
 
     void SitDown(Chair chair)
