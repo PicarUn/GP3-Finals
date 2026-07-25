@@ -4,9 +4,26 @@ using System.Collections;
 
 public class MainMenu : MonoBehaviour
 {
+    public GameObject settingsPanel;
     public string gameSceneName = "Game";
     public CanvasGroup fadeCanvasGroup;
     public float fadeDuration = 1.5f;
+
+    private void Start()
+    {
+        settingsPanel.SetActive(false);
+    }
+
+    public void OpenSettings()
+    {
+        settingsPanel.SetActive(true);
+    }
+
+    public void CloseSettings()
+    {
+        settingsPanel.SetActive(false);
+    }
+
     public void StartGame()
     {
         StartCoroutine(FadeAndLoadScene());
