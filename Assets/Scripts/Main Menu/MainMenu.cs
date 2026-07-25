@@ -4,12 +4,12 @@ using System.Collections;
 
 public class MainMenu : MonoBehaviour
 {
-    public string gameSceneName = "GameScene";
+    public string gameSceneName = "Game";
     public CanvasGroup fadeCanvasGroup;
-    public float fadeDuration = 1f;
+    public float fadeDuration = 1.5f;
     public void StartGame()
     {
-        SceneManager.LoadScene(gameSceneName);
+        StartCoroutine(FadeAndLoadScene());
     }
 
     private IEnumerator FadeAndLoadScene()
