@@ -1,5 +1,7 @@
 using UnityEngine;
-using UnityEngine.SceneManagement; 
+using UnityEngine.SceneManagement;
+using UnityEngine.UI; 
+using TMPro;
 
 public class BlackoutManager : MonoBehaviour
 {
@@ -12,6 +14,10 @@ public class BlackoutManager : MonoBehaviour
     public float blackoutChancePerSecond = 0.05f; 
     public float repairTimeLimit = 30f; 
 
+    [Header("UI References")]
+    public GameObject timerUIContainer; 
+    public TextMeshProUGUI timerText; 
+
     [Header("Game Over References")]
     public GameObject gameOverPanel; 
     public PlayerInteract playerInteract; 
@@ -21,9 +27,17 @@ public class BlackoutManager : MonoBehaviour
     private float timer = 0f;
     private bool isGameOver = false;
 
+    void Start()
+    {
+       
+        if (timerUIContainer != null) 
+        {
+            timerUIContainer.SetActive(false);
+        }
+    }
+
     void Update()
     {
-        
         if (isGameOver) return; 
 
         if (!isLightOut)
@@ -35,8 +49,15 @@ public class BlackoutManager : MonoBehaviour
         }
         else
         {
-           
+            
             timer -= Time.deltaTime;
+            
+           
+            if (timerText != null)
+            {
+               
+                timerText.text = Mathf.CeilToInt(timer).ToString() + "s"; 
+            }
             
             if (timer <= 0)
             {
@@ -49,12 +70,20 @@ public class BlackoutManager : MonoBehaviour
     {
         isLightOut = true;
         timer = repairTimeLimit; 
+        
+       
+        if (timerUIContainer != null) timerUIContainer.SetActive(true);
+
         ToggleLightingSetup(false);
     }
 
     public void TurnOnLights()
     {
         isLightOut = false;
+        
+        
+        if (timerUIContainer != null) timerUIContainer.SetActive(false);
+
         ToggleLightingSetup(true);
     }
 
@@ -79,10 +108,8 @@ public class BlackoutManager : MonoBehaviour
     {
         isGameOver = true;
         
-       
         if (gameOverPanel != null) gameOverPanel.SetActive(true);
 
-        
         if (playerInteract != null)
         {
             playerInteract.playerMovementScript.enabled = false;
@@ -90,18 +117,14 @@ public class BlackoutManager : MonoBehaviour
             playerInteract.enabled = false; 
         }
 
-        
         if (playerCam != null) playerCam.enabled = false;
 
-       
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
     }
 
-    
     public void ReturnToMainMenu()
     {
-        
         SceneManager.LoadScene("MainMenu"); 
     }
 }
