@@ -1,139 +1,233 @@
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Audio;
-using UnityEngine.SceneManagement;
 
 public class AudioManager : MonoBehaviour
 {
-    public static AudioManager Instance;
+    public static AudioManager Instance { get; private set; }
 
     [Header("Mixer")]
-    [SerializeField] public AudioMixer Mixer;
+    [SerializeField] private AudioMixer myMixer;
+    [SerializeField] private AudioMixerGroup musicMixerGroup;
+    [SerializeField] private AudioMixerGroup sfxMixerGroup;
 
-    [Header("Sources")]
-    [SerializeField] private AudioSource bgmSource;
-    [SerializeField] private AudioSource sfxSource;
+    [Header("Sound Data")]
+    [Tooltip("Drag in a SoundLibrary asset. Create one via Assets > Create > Audio > Sound Library.")]
+    [SerializeField] private SoundLibrary soundLibrary;
 
-    [Header("Other Sounds")]
-    [SerializeField] private AudioClip buttonSFX;
+    [Header("SFX Pool")]
+    [Tooltip("How many SFX can play at the same time.")]
+    [SerializeField] private int sfxSourcePoolSize = 8;
 
-    [Header("Scene Music Setup")]
-    [SerializeField] private SceneMusicPair[] sceneMusicPairs;
+    private AudioSource musicSource;
+    private List<AudioSource> sfxPool = new List<AudioSource>();
+    private Dictionary<string, Sound> musicLookup;
+    private Dictionary<string, Sound> sfxLookup;
 
-    private Dictionary<string, AudioClip> sceneMusicDict;
-
-    [System.Serializable]
-    public class SceneMusicPair
-    {
-        public string sceneName;
-        public AudioClip musicClip;
-    }
-
+    private Coroutine fadeRoutine;
 
     private void Awake()
     {
-        if (Instance == null)
-        {
-            Instance = this;
-            DontDestroyOnLoad(gameObject);
-        }
-        else
+        if (Instance != null && Instance != this)
         {
             Destroy(gameObject);
             return;
         }
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
 
-        BuildMusicDictionary();
+        BuildLookups();
+        SetUpMusicSource();
+        SetUpSfxPool();
     }
 
-    private void OnEnable()
+    private void BuildLookups()
     {
-        SceneManager.sceneLoaded += OnSceneLoaded;
-    }
+        musicLookup = new Dictionary<string, Sound>();
+        sfxLookup = new Dictionary<string, Sound>();
 
-    private void OnDisable()
-    {
-        SceneManager.sceneLoaded -= OnSceneLoaded;
-    }
-
-    private void Start()
-    {
-        LoadVolumes();
-        PlaySceneMusic(SceneManager.GetActiveScene().name);
-    }
-
-    private void BuildMusicDictionary()
-    {
-        sceneMusicDict = new Dictionary<string, AudioClip>();
-
-        foreach (var pair in sceneMusicPairs)
+        if (soundLibrary == null)
         {
-            if (!sceneMusicDict.ContainsKey(pair.sceneName))
-                sceneMusicDict.Add(pair.sceneName, pair.musicClip);
+            Debug.LogWarning("AudioManager: no SoundLibrary assigned. Assign one in the inspector.");
+            return;
+        }
+
+        foreach (var s in soundLibrary.musicTracks)
+        {
+            if (s.clip == null || string.IsNullOrEmpty(s.name)) continue;
+            musicLookup[s.name] = s;
+        }
+
+        foreach (var s in soundLibrary.sfxClips)
+        {
+            if (s.clip == null || string.IsNullOrEmpty(s.name)) continue;
+            sfxLookup[s.name] = s;
         }
     }
 
-    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+
+    public void SetSoundLibrary(SoundLibrary newLibrary)
     {
-        PlaySceneMusic(scene.name);
+        soundLibrary = newLibrary;
+        BuildLookups();
     }
 
-    private void PlaySceneMusic(string sceneName)
+    private void SetUpMusicSource()
     {
-        if (sceneMusicDict.TryGetValue(sceneName, out AudioClip clip))
+        musicSource = gameObject.AddComponent<AudioSource>();
+        musicSource.playOnAwake = false;
+        musicSource.loop = true;
+        if (musicMixerGroup != null)
+            musicSource.outputAudioMixerGroup = musicMixerGroup;
+    }
+
+    private void SetUpSfxPool()
+    {
+        for (int i = 0; i < sfxSourcePoolSize; i++)
         {
-            ChangeBGM(clip);
+            var src = gameObject.AddComponent<AudioSource>();
+            src.playOnAwake = false;
+            src.loop = false;
+            if (sfxMixerGroup != null)
+                src.outputAudioMixerGroup = sfxMixerGroup;
+            sfxPool.Add(src);
         }
     }
 
-    public void ChangeBGM(AudioClip newClip)
-    {
-        if (newClip == null) return;
-        if (bgmSource.clip == newClip) return;
+    // ---------------- MUSIC ----------------
 
-        bgmSource.clip = newClip;
-        bgmSource.loop = true;
-        bgmSource.Play();
+    public void PlayMusic(string trackName, bool restartIfSame = false)
+    {
+        if (!musicLookup.TryGetValue(trackName, out Sound sound))
+        {
+            Debug.LogWarning($"AudioManager: no music track named '{trackName}' found.");
+            return;
+        }
+
+        if (musicSource.clip == sound.clip && musicSource.isPlaying && !restartIfSame)
+            return;
+
+        musicSource.clip = sound.clip;
+        musicSource.volume = sound.volume;
+        musicSource.pitch = sound.pitch;
+        musicSource.loop = sound.loop || true; // music defaults to looping
+        musicSource.Play();
     }
 
-    //SFXs
-    public void PlayButtonSound()
+    public void PlayMusicFade(string trackName, float duration = 1f)
     {
-        PlaySFX(buttonSFX);
+        if (!musicLookup.TryGetValue(trackName, out Sound sound))
+        {
+            Debug.LogWarning($"AudioManager: no music track named '{trackName}' found.");
+            return;
+        }
+
+        if (fadeRoutine != null)
+            StopCoroutine(fadeRoutine);
+
+        fadeRoutine = StartCoroutine(FadeToTrack(sound, duration));
     }
 
-    public void PlaySFX(AudioClip clip)
+    private IEnumerator FadeToTrack(Sound sound, float duration)
     {
-        if (clip != null)
-            sfxSource.PlayOneShot(clip);
+        float startVolume = musicSource.volume;
+
+        // Fade out
+        float t = 0f;
+        while (t < duration / 2f)
+        {
+            t += Time.deltaTime;
+            musicSource.volume = Mathf.Lerp(startVolume, 0f, t / (duration / 2f));
+            yield return null;
+        }
+
+        musicSource.clip = sound.clip;
+        musicSource.pitch = sound.pitch;
+        musicSource.loop = true;
+        musicSource.Play();
+
+        // Fade in
+        t = 0f;
+        while (t < duration / 2f)
+        {
+            t += Time.deltaTime;
+            musicSource.volume = Mathf.Lerp(0f, sound.volume, t / (duration / 2f));
+            yield return null;
+        }
+
+        musicSource.volume = sound.volume;
     }
 
-    //Volumes
-    public void LoadVolumes()
+    public void StopMusic()
     {
-        SetMasterVolume(PlayerPrefs.GetFloat("masterVolume", 1f));
-        SetMusicVolume(PlayerPrefs.GetFloat("musicVolume", 1f));
-        SetSFXVolume(PlayerPrefs.GetFloat("sfxVolume", 1f));
+        musicSource.Stop();
     }
 
-    public void SetMasterVolume(float value)
+    public void PauseMusic() => musicSource.Pause();
+    public void ResumeMusic() => musicSource.UnPause();
+
+    // ---------------- SFX ----------------
+
+    public void PlaySFX(string sfxName)
     {
-        float v = Mathf.Clamp(value, 0.0001f, 1f);
-        PlayerPrefs.SetFloat("masterVolume", v);
-        Mixer.SetFloat("Master", Mathf.Log10(v) * 20);
+        if (!sfxLookup.TryGetValue(sfxName, out Sound sound))
+        {
+            Debug.LogWarning($"AudioManager: no SFX named '{sfxName}' found.");
+            return;
+        }
+
+        AudioSource src = GetAvailableSfxSource();
+        src.clip = sound.clip;
+        src.volume = sound.volume;
+        src.pitch = sound.pitch;
+        src.loop = sound.loop;
+        src.Play();
     }
 
-    public void SetMusicVolume(float value)
+    public void PlaySFXWithPitchVariance(string sfxName, float variance = 0.1f)
     {
-        float v = Mathf.Clamp(value, 0.0001f, 1f);
-        PlayerPrefs.SetFloat("musicVolume", v);
-        Mixer.SetFloat("Music", Mathf.Log10(v) * 20);
+        if (!sfxLookup.TryGetValue(sfxName, out Sound sound))
+        {
+            Debug.LogWarning($"AudioManager: no SFX named '{sfxName}' found.");
+            return;
+        }
+
+        AudioSource src = GetAvailableSfxSource();
+        src.clip = sound.clip;
+        src.volume = sound.volume;
+        src.pitch = sound.pitch + UnityEngine.Random.Range(-variance, variance);
+        src.loop = sound.loop;
+        src.Play();
     }
 
-    public void SetSFXVolume(float value)
+    public void PlaySFX(AudioClip clip, float volume = 1f, float pitch = 1f)
     {
-        float v = Mathf.Clamp(value, 0.0001f, 1f);
-        PlayerPrefs.SetFloat("sfxVolume", v);
-        Mixer.SetFloat("SFX", Mathf.Log10(v) * 20);
+        if (clip == null) return;
+
+        AudioSource src = GetAvailableSfxSource();
+        src.clip = clip;
+        src.volume = volume;
+        src.pitch = pitch;
+        src.loop = false;
+        src.Play();
+    }
+
+    private AudioSource GetAvailableSfxSource()
+    {
+        foreach (var src in sfxPool)
+        {
+            if (!src.isPlaying)
+                return src;
+        }
+
+        // Pool
+        var newSrc = gameObject.AddComponent<AudioSource>();
+        newSrc.playOnAwake = false;
+        if (sfxMixerGroup != null)
+            newSrc.outputAudioMixerGroup = sfxMixerGroup;
+        sfxPool.Add(newSrc);
+        return newSrc;
     }
 }

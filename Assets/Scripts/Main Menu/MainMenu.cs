@@ -12,6 +12,8 @@ public class MainMenu : MonoBehaviour
     private void Start()
     {
         settingsPanel.SetActive(false);
+        AudioManager.Instance.PlayMusic("menuMusic");
+        AudioManager.Instance.PlaySFX("humSFX");
     }
 
     public void OpenSettings()
