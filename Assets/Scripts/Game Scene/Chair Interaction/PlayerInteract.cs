@@ -12,16 +12,22 @@ public class PlayerInteract : MonoBehaviour
     public GameObject sitUI;
     public GameObject micUI; 
     public GameObject fuseBoxUI; 
-    public MinigameManager minigameManager; 
+    
+    
+    public RelayQTE qteScript; 
+    public BlackoutManager blackoutManager; 
 
     public Transform playerBody;  
     public PlayerMovement playerMovementScript;
     public Rigidbody playerRb;
-    public GameObject qtePanel; 
 
     private bool isSitting = false;
     private bool inMinigame = false;
     private Chair currentChair = null;
+    
+    
+    public enum CurrentTask { None, Mic, Fusebox }
+    private CurrentTask activeTask = CurrentTask.None;
 
     void Update()
     {
@@ -45,34 +51,34 @@ public class PlayerInteract : MonoBehaviour
             }
             else if (hit.collider.CompareTag("Mic"))
             {
-                lookingAtMic = true;
+                
+                if (blackoutManager != null && !blackoutManager.isLightOut)
+                {
+                    lookingAtMic = true;
+                }
             }
             else if (hit.collider.CompareTag("FuseBox"))
             {
-                lookingAtFuseBox = true;
+                
+                if (blackoutManager != null && blackoutManager.isLightOut)
+                {
+                    lookingAtFuseBox = true;
+                }
             }
         }
 
-        sitUI.SetActive(lookingAtChair);
-        micUI.SetActive(lookingAtMic);
-        
-        
-        if (fuseBoxUI != null) 
-        {
-            fuseBoxUI.SetActive(lookingAtFuseBox);
-        }
+        if (sitUI != null) sitUI.SetActive(lookingAtChair);
+        if (micUI != null) micUI.SetActive(lookingAtMic);
+        if (fuseBoxUI != null) fuseBoxUI.SetActive(lookingAtFuseBox);
 
         if (isSitting)
         {
-           
             playerBody.position = currentChair.sitPoint.position;
 
-            
             if (lookingAtMic && Input.GetKeyDown(interactKey))
             {
-                StartMinigame();
+                StartQTE(CurrentTask.Mic);
             }
-            
             else if (Input.GetKeyDown(standKey) || (Input.GetKeyDown(interactKey) && !lookingAtMic))
             {
                 StandUp();
@@ -86,71 +92,59 @@ public class PlayerInteract : MonoBehaviour
             }
             else if (lookingAtMic && Input.GetKeyDown(interactKey))
             {
-                StartMinigame();
+                StartQTE(CurrentTask.Mic);
             }
-            
             else if (lookingAtFuseBox && Input.GetKeyDown(interactKey))
             {
-                StartWireMinigame();
+                StartQTE(CurrentTask.Fusebox);
             }
         }
     }
 
-    void StartMinigame() 
+    void StartQTE(CurrentTask taskType) 
     {
         inMinigame = true;
+        activeTask = taskType;
         
-        sitUI.SetActive(false);
-        micUI.SetActive(false);
+        if (sitUI != null) sitUI.SetActive(false);
+        if (micUI != null) micUI.SetActive(false);
         if (fuseBoxUI != null) fuseBoxUI.SetActive(false);
         
         playerMovementScript.enabled = false;
         playerRb.isKinematic = true; 
         playerRb.linearVelocity = Vector3.zero;
 
-        qtePanel.SetActive(true);
+       
+        if (taskType == CurrentTask.Fusebox)
+        {
+            qteScript.targetSuccesses = 3;
+        }
+        else 
+        {
+            qteScript.targetSuccesses = 1;
+        }
+
+        
+        qteScript.gameObject.SetActive(true);
     }
 
-    
-    void StartWireMinigame()
-    {
-        inMinigame = true;
-        
-        sitUI.SetActive(false);
-        micUI.SetActive(false);
-        if (fuseBoxUI != null) fuseBoxUI.SetActive(false);
-        
-        
-        playerMovementScript.enabled = false;
-        playerRb.isKinematic = true; 
-        playerRb.linearVelocity = Vector3.zero;
-
-        
-        minigameManager.OpenWireTask();
-    }
-
-    public void EndMinigame() 
+    public void EndMinigame(bool success) 
     {
         inMinigame = false;
+        
+        
+        if (success && activeTask == CurrentTask.Fusebox)
+        {
+            if (blackoutManager != null) blackoutManager.TurnOnLights();
+        }
+
+        activeTask = CurrentTask.None;
         
         if (!isSitting) 
         {
             playerMovementScript.enabled = true;
             playerRb.isKinematic = false;
         }
-    }
-
-    
-    public void EndWireMinigame()
-    {
-        inMinigame = false;
-        
-       
-        playerMovementScript.enabled = true;
-        playerRb.isKinematic = false;
-
-        
-        minigameManager.CloseWireTask();
     }
 
     void SitDown(Chair chair)
