@@ -7,6 +7,9 @@ public class GameAudio : MonoBehaviour
     {
         AudioManager.Instance.StopMusic();
         AudioManager.Instance.PlaySFX("humSFX");
+        AudioManager.Instance.PlaySFX("LightBuzzSFX");
+
+        AudioManager.Instance.PlayMusic("GameMusic_Muffled");
     }
 
     // Update is called once per frame
