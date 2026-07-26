@@ -11,6 +11,9 @@ public class PlayerInteract : MonoBehaviour
     [Header("References")]
     public GameObject sitUI;
     public GameObject micUI; 
+    public GameObject fuseBoxUI; 
+    public MinigameManager minigameManager; 
+
     public Transform playerBody;  
     public PlayerMovement playerMovementScript;
     public Rigidbody playerRb;
@@ -22,14 +25,13 @@ public class PlayerInteract : MonoBehaviour
 
     void Update()
     {
-       
         if (inMinigame) return; 
 
         bool lookingAtMic = false;
         bool lookingAtChair = false;
+        bool lookingAtFuseBox = false; 
         Chair seenChair = null;
 
-       
         Ray ray = new Ray(transform.position, transform.forward);
         RaycastHit hit;
 
@@ -39,37 +41,44 @@ public class PlayerInteract : MonoBehaviour
             
             if (seenChair != null && !isSitting) 
             {
-                
                 lookingAtChair = true;
             }
             else if (hit.collider.CompareTag("Mic"))
             {
                 lookingAtMic = true;
             }
+            else if (hit.collider.CompareTag("FuseBox"))
+            {
+                lookingAtFuseBox = true;
+            }
         }
 
-       
         sitUI.SetActive(lookingAtChair);
         micUI.SetActive(lookingAtMic);
+        
+        
+        if (fuseBoxUI != null) 
+        {
+            fuseBoxUI.SetActive(lookingAtFuseBox);
+        }
 
-       
         if (isSitting)
         {
-            // Keep the player locked to the chair
+           
             playerBody.position = currentChair.sitPoint.position;
 
-            // If sitting and looking at mic, E starts the minigame
+            
             if (lookingAtMic && Input.GetKeyDown(interactKey))
             {
                 StartMinigame();
             }
-            // If they press Space, OR if they press E while NOT looking at the mic, they stand up
+            
             else if (Input.GetKeyDown(standKey) || (Input.GetKeyDown(interactKey) && !lookingAtMic))
             {
                 StandUp();
             }
         }
-        else // If standing up
+        else 
         {
             if (lookingAtChair && Input.GetKeyDown(interactKey))
             {
@@ -79,36 +88,69 @@ public class PlayerInteract : MonoBehaviour
             {
                 StartMinigame();
             }
+            
+            else if (lookingAtFuseBox && Input.GetKeyDown(interactKey))
+            {
+                StartWireMinigame();
+            }
         }
     }
 
-    void StartMinigame()
+    void StartMinigame() 
     {
         inMinigame = true;
         
+        sitUI.SetActive(false);
+        micUI.SetActive(false);
+        if (fuseBoxUI != null) fuseBoxUI.SetActive(false);
+        
+        playerMovementScript.enabled = false;
+        playerRb.isKinematic = true; 
+        playerRb.linearVelocity = Vector3.zero;
+
+        qtePanel.SetActive(true);
+    }
+
+    
+    void StartWireMinigame()
+    {
+        inMinigame = true;
         
         sitUI.SetActive(false);
         micUI.SetActive(false);
+        if (fuseBoxUI != null) fuseBoxUI.SetActive(false);
         
-       
+        
         playerMovementScript.enabled = false;
         playerRb.isKinematic = true; 
         playerRb.linearVelocity = Vector3.zero;
 
         
-        qtePanel.SetActive(true);
+        minigameManager.OpenWireTask();
     }
 
-    public void EndMinigame()
+    public void EndMinigame() 
     {
         inMinigame = false;
         
-       
         if (!isSitting) 
         {
             playerMovementScript.enabled = true;
             playerRb.isKinematic = false;
         }
+    }
+
+    
+    public void EndWireMinigame()
+    {
+        inMinigame = false;
+        
+       
+        playerMovementScript.enabled = true;
+        playerRb.isKinematic = false;
+
+        
+        minigameManager.CloseWireTask();
     }
 
     void SitDown(Chair chair)
